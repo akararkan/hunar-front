@@ -109,7 +109,7 @@ async function saveHelen() {
       await axios.put(`${API_BASE_URL}/helen/updateHelenById/${editingHelen.value.id}`, helen.value);
     } else {
       // Add new helen
-      const response = await axios.post(`${API_BASE_URL}/helen/addHelen`, helen.value, {
+      const response = await axios.post(`${API_BASE_URL}/helen/addHelen`, helen.value , {
         params: {
           workerId: helen.value.workerId
         }
