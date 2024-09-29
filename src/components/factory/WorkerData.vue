@@ -3,6 +3,7 @@
     <h1>Worker Data Management</h1>
     <div class="header">
       <button class="primary-button" @click="openModal">Add Worker Data</button>
+      <button class="primary-button print-button" @click="printTable">Print Report</button>
     </div>
     <hr />
 
@@ -52,7 +53,7 @@
     </div>
 
     <!-- Worker Data Table -->
-    <table v-else class="worker-data-table">
+    <table v-else class="worker-data-table" id="workerDataTable">
       <thead>
         <tr>
           <th>Today Cut Weight</th>
@@ -69,7 +70,7 @@
           <td>{{ data.stoneName }}</td>
           <td>{{ data.stoneSize }}</td>
           <td>{{ data.todayGainPrice }} USD</td>
-          <td>{{ data.worker?.fullName }}</td> <!-- Display worker's full name -->
+          <td>{{ data.worker?.fullName }}</td>
           <td>
             <button class="edit-button" @click="editWorkerData(data)">Edit</button>
             <button class="delete-button" @click="deleteWorkerData(data.id)">Delete</button>
@@ -77,12 +78,42 @@
         </tr>
       </tbody>
     </table>
+
+    <!-- Worker Income Report Section -->
+    <div class="report-section">
+      <h2>Monthly Income Report</h2>
+      
+      <!-- Worker Selection -->
+      <div class="form-group">
+        <label for="workerReport" class="form-label">Select Worker</label>
+        <select v-model="selectedWorkerId" id="workerReport" class="form-input" @change="calculateMonthlyIncome">
+          <option value="" disabled>Select Worker</option>
+          <option v-for="worker in workers" :key="worker.id" :value="worker.id">{{ worker.fullName }}</option>
+        </select>
+      </div>
+
+      <!-- Display Monthly Income with Cards and Chart -->
+      <div v-if="monthlyIncome !== null" class="income-report">
+        <!-- Card with worker info -->
+        <div class="income-card">
+          <p class="total-income">Total Monthly Income: <strong>{{ monthlyIncome }} USD</strong></p>
+        </div>
+
+        <!-- Chart for Monthly Income -->
+        <div v-if="chartRendered" class="chart-container">
+          <canvas id="incomeChart"></canvas>
+          <!-- Close button to hide the chart -->
+          <button class="secondary-button close-chart" @click="closeChart">Close Chart</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick } from 'vue'; // Import nextTick to ensure the DOM is updated
 import axios from 'axios';
+import Chart from 'chart.js/auto'; // Import Chart.js
 
 const workerDataList = ref([]);
 const workers = ref([]);
@@ -96,6 +127,10 @@ const workerData = ref({
 
 const editingWorkerData = ref(null);
 const showModal = ref(false);
+const selectedWorkerId = ref('');
+const monthlyIncome = ref(null);
+const chartRendered = ref(false); // Track if the chart is rendered
+let incomeChartInstance = null;
 
 const API_BASE_URL = 'http://localhost:8080/api/v1';
 
@@ -110,7 +145,6 @@ async function fetchWorkerData() {
   try {
     const response = await axios.get(`${API_BASE_URL}/workerData/allWorkerData`);
     workerDataList.value = response.data;
-    console.log('Worker Data:', workerDataList.value); // For debugging
   } catch (error) {
     console.error('Error fetching worker data:', error);
   }
@@ -121,7 +155,6 @@ async function fetchWorkers() {
   try {
     const response = await axios.get(`${API_BASE_URL}/worker/allWorkers`);
     workers.value = response.data;
-    console.log('Workers:', workers.value); // For debugging
   } catch (error) {
     console.error('Error fetching workers:', error);
   }
@@ -187,10 +220,113 @@ function resetWorkerData() {
   };
   editingWorkerData.value = null;
 }
+
+// Print the Worker Data table
+function printTable() {
+  const printContents = document.getElementById('workerDataTable').outerHTML;
+  const originalContents = document.body.innerHTML;
+  document.body.innerHTML = printContents;
+  window.print();
+  document.body.innerHTML = originalContents;
+  window.location.reload(); // Refresh to reset the view
+}
+
+// Calculate the monthly income of a selected worker and display in a chart
+function calculateMonthlyIncome() {
+  if (selectedWorkerId.value) {
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+
+    const workerMonthlyData = workerDataList.value.filter((data) => {
+      const recordDate = new Date(data.createDate);
+      return (
+        data.worker?.id === selectedWorkerId.value &&
+        recordDate.getMonth() + 1 === currentMonth &&
+        recordDate.getFullYear() === currentYear
+      );
+    });
+
+    const totalIncome = workerMonthlyData.reduce((sum, data) => sum + data.todayGainPrice, 0);
+    monthlyIncome.value = totalIncome;
+
+    const dailyIncome = calculateDailyIncome(workerMonthlyData);
+
+    // Ensure the canvas is rendered before updating the chart
+    nextTick(() => {
+      updateIncomeChart(dailyIncome);
+    });
+
+    chartRendered.value = true;
+  } else {
+    monthlyIncome.value = null;
+    chartRendered.value = false; // Hide chart if no worker selected
+  }
+}
+
+// Helper function to calculate daily income for the chart
+function calculateDailyIncome(workerMonthlyData) {
+  const dailyIncomeMap = {};
+
+  workerMonthlyData.forEach((data) => {
+    const dateKey = new Date(data.createDate).toLocaleDateString();
+    if (!dailyIncomeMap[dateKey]) {
+      dailyIncomeMap[dateKey] = 0;
+    }
+    dailyIncomeMap[dateKey] += data.todayGainPrice;
+  });
+
+  const dates = Object.keys(dailyIncomeMap);
+  const incomes = Object.values(dailyIncomeMap);
+
+  return { dates, incomes };
+}
+
+// Initialize or update the Chart.js chart
+function updateIncomeChart(dailyIncome) {
+  const ctx = document.getElementById('incomeChart');
+
+  if (ctx) {
+    if (incomeChartInstance) {
+      incomeChartInstance.destroy(); // Destroy the existing chart instance to avoid duplicates
+    }
+
+    incomeChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: dailyIncome.dates,
+        datasets: [
+          {
+            label: 'Daily Income (USD)',
+            data: dailyIncome.incomes,
+            backgroundColor: '#16a085',
+            borderColor: '#1abc9c',
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true,
+          },
+        },
+      },
+    });
+  }
+}
+
+// Function to close the chart
+function closeChart() {
+  chartRendered.value = false;
+  if (incomeChartInstance) {
+    incomeChartInstance.destroy(); // Destroy the chart when closing
+    incomeChartInstance = null;
+  }
+}
 </script>
 
-
 <style scoped>
+/* Styles remain the same as before */
 .worker-data-container {
   padding: 30px;
   background-color: #f8f9fa;
@@ -208,11 +344,10 @@ function resetWorkerData() {
 
 .header {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   margin-bottom: 40px;
 }
 
-/* Modal styling */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -240,7 +375,6 @@ function resetWorkerData() {
   font-size: 1.8em;
 }
 
-/* Table styling */
 .worker-data-table {
   width: 100%;
   border-collapse: collapse;
@@ -262,7 +396,6 @@ function resetWorkerData() {
   background-color: #f1f1f1;
 }
 
-/* Modal form inputs */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -277,43 +410,57 @@ function resetWorkerData() {
   width: 100%;
 }
 
-/* Modal form actions */
 .modal-actions {
   margin-top: 20px;
   display: flex;
   justify-content: space-between;
 }
 
-/* Button styles */
 button {
-  padding: 12px 20px;
+  padding: 12px 24px;
   border: none;
   border-radius: 8px;
+  font-size: 1.2em;
+  font-weight: 500;
   cursor: pointer;
-  font-size: 1em;
+  transition: all 0.3s ease;
 }
 
 .primary-button {
-  background-color: #304eb2;
+  background-color: #1abc9c;
   color: white;
-  transition: background-color 0.3s ease;
+  font-size: 1.2em;
+  padding: 15px 30px;
+  border-radius: 8px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
 .primary-button:hover {
-  background-color: #27ae60;
-  box-shadow: 0 4px 15px rgba(0, 255, 0, 0.3);
+  background-color: #16a085;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(22, 160, 133, 0.4);
 }
 
 .secondary-button {
-  background-color: #95a5a6;
+  background-color: #e74c3c;
   color: white;
 }
 
 .secondary-button:hover {
-  background-color: #7f8c8d;
+  background-color: #c0392b;
 }
 
-/* Edit and Delete Buttons */
+.close-chart {
+  margin-top: 20px;
+  display: block;
+  background-color: #e74c3c;
+  color: white;
+  padding: 10px;
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+}
+
 .edit-button, .delete-button {
   padding: 8px 16px;
   font-size: 1em;
@@ -339,11 +486,75 @@ button {
   background-color: #c0392b;
 }
 
-/* No worker data message */
 .no-worker-data {
   margin-top: 50px;
   text-align: center;
   font-size: 1.5em;
   color: #7f8c8d;
+}
+
+.print-button {
+  background-color: #3498db;
+  color: white;
+  font-size: 1.2em;
+  padding: 15px 30px;
+  border-radius: 8px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.print-button:hover {
+  background-color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+}
+
+.report-section {
+  margin-top: 40px;
+  background-color: #f8f9fa;
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0px 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.report-section h2 {
+  font-size: 1.8rem;
+  color: #333;
+  margin-bottom: 20px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.income-report {
+  margin-top: 20px;
+  font-size: 1.2em;
+  color: #2c3e50;
+  font-weight: bold;
+  text-align: center;
+}
+
+.income-card {
+  margin-top: 20px;
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.worker-name {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.total-income {
+  font-size: 1.3em;
+  margin-top: 10px;
+  color: #16a085;
+}
+
+canvas {
+  margin-top: 20px;
+  width: 100%;
+  height: 300px;
 }
 </style>

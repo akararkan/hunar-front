@@ -18,6 +18,7 @@ import FactoryOrder from './factory/FactoryOrder.vue';
 import Worker from './factory/Worker.vue';
 import WorkerData from './factory/WorkerData.vue';
 import Pallet from './factory/Pallet.vue';
+import Package from './factory/Package.vue';
 
 // Load the saved section from localStorage or default to 'stone'
 const currentSection = ref(localStorage.getItem('currentSection') || 'stone');
@@ -42,6 +43,8 @@ function getComponent(section) {
       return Worker;
     case 'worker-data':
       return WorkerData;
+    case 'package':
+      return Package;
     default:
       return Stone;
   }

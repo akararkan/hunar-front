@@ -1,109 +1,85 @@
 <template>
-  <div class="factory-order-container">
-    <h1>Factory Order Management</h1>
+  <div class="package-container">
+    <h1>Package Management</h1>
     <div class="header">
-      <button class="primary-button" @click="openModal">Add New Factory Order</button>
+      <button class="primary-button" @click="openModal">Add New Package</button>
       <button class="primary-button print-button" @click="printTable">Print Report</button>
     </div>
     <hr />
 
-    <!-- Modal for Adding or Editing a Factory Order -->
+    <!-- Modal for Adding or Editing a Package -->
     <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
       <div class="modal">
-        <h3>{{ editingOrder ? 'Edit Factory Order' : 'Add New Factory Order' }}</h3>
+        <h3>{{ editingPackage ? 'Edit Package' : 'Add New Package' }}</h3>
         <div class="form-group">
-          <!-- Order Description -->
+          <!-- Package Name -->
           <input
-            v-model="newOrder.description"
-            placeholder="Order Description"
+            v-model="newPackage.name"
+            placeholder="Package Name"
             class="form-input"
             type="text"
             required
           />
 
-          <!-- Destination -->
-          <input
-            v-model="newOrder.dest"
-            placeholder="Destination"
+          <!-- Package Description -->
+          <textarea
+            v-model="newPackage.description"
+            placeholder="Package Description"
             class="form-input"
-            type="text"
+            rows="3"
+          ></textarea>
+
+          <!-- Total Price -->
+          <input
+            v-model="newPackage.totalPrice"
+            placeholder="Total Price (USD)"
+            class="form-input"
+            type="number"
             required
           />
 
-          <!-- Owner Name -->
-          <input
-            v-model="newOrder.ownerName"
-            placeholder="Owner Name"
-            class="form-input"
-            type="text"
-            required
-          />
-
-          <!-- Owner Email -->
-          <input
-            v-model="newOrder.ownerEmail"
-            placeholder="Owner Email"
-            class="form-input"
-            type="email"
-            required
-          />
-
-          <!-- Owner Phone Number -->
-          <input
-            v-model="newOrder.ownerPhoneNumber"
-            placeholder="Phone Number"
-            class="form-input"
-            type="text"
-            required
-          />
-
-          <!-- Order Status -->
-          <label for="status" class="form-label">Order Status:</label>
-          <select v-model="newOrder.status" id="status" class="form-input">
-            <option disabled value="">Select status</option>
-            <option value="PREPARING">PREPARING</option>
-            <option value="READY">READY</option>
-            <option value="COMPLETED">COMPLETED</option>
-            <option value="CANCELED">CANCELED</option>
+          <!-- Factory Order Selection -->
+          <label for="factoryOrder" class="form-label">Assign Factory Order:</label>
+          <select v-model="newPackage.factoryOrderId" id="factoryOrder" class="form-input">
+            <option disabled value="">Select Factory Order</option>
+            <option v-for="order in orders" :key="order.id" :value="order.id">
+              {{ order.description }} ({{ order.ownerName }}) - {{ order.dest }}
+            </option>
           </select>
         </div>
         <div class="modal-actions">
-          <button class="primary-button" @click="editingOrder ? updateOrder() : addOrder()">
-            {{ editingOrder ? 'Update' : 'Add' }} Factory Order
+          <button class="primary-button" @click="editingPackage ? updatePackage() : addPackage()">
+            {{ editingPackage ? 'Update' : 'Add' }} Package
           </button>
           <button class="secondary-button" @click="closeModal">Cancel</button>
         </div>
       </div>
     </div>
 
-    <!-- Factory Order List in Table Format -->
-    <div v-if="factoryOrders.length === 0" class="no-factory-orders">
-      <p>No factory orders available. Add a new order to get started!</p>
+    <!-- Package List in Table Format -->
+    <div v-if="packages.length === 0" class="no-packages">
+      <p>No packages available. Add a new package to get started!</p>
     </div>
 
-    <table v-else class="factory-order-table" id="factoryOrderTable">
+    <table v-else class="package-table" id="packageTable">
       <thead>
         <tr>
-          <th>Order Code</th>
+          <th>Package Name</th>
           <th>Description</th>
-          <th>Destination</th>
-          <th>Owner</th>
-          <th>Phone Number</th>
-          <th>Status</th>
+          <th>Total Price (USD)</th>
+          <th>Factory Order</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="order in factoryOrders" :key="order.id">
-          <td>{{ order.orderCode || 'N/A' }}</td>
-          <td>{{ order.description }}</td>
-          <td>{{ order.dest }}</td>
-          <td>{{ order.ownerName }} ({{ order.ownerEmail }})</td>
-          <td>{{ order.ownerPhoneNumber }}</td>
-          <td>{{ order.status }}</td>
+        <tr v-for="packageData in packages" :key="packageData.id">
+          <td>{{ packageData.name }}</td>
+          <td>{{ packageData.description }}</td>
+          <td>{{ packageData.totalPrice }}</td>
+          <td>{{ packageData.factoryOrder?.description || 'N/A' }} ({{ packageData.factoryOrder?.ownerName }})</td>
           <td>
-            <button class="edit-button" @click="editOrder(order)">Edit</button>
-            <button class="delete-button" @click="deleteOrder(order.id)">Delete</button>
+            <button class="edit-button" @click="editPackage(packageData)">Edit</button>
+            <button class="delete-button" @click="deletePackage(packageData.id)">Delete</button>
           </td>
         </tr>
       </tbody>
@@ -115,83 +91,90 @@
 import { ref, onMounted } from "vue";
 import axios from "axios";
 
-const factoryOrders = ref([]); // List of factory orders
+const packages = ref([]); // List of packages
+const orders = ref([]); // List of factory orders
 
-const newOrder = ref({
+const newPackage = ref({
+  name: "",
   description: "",
-  dest: "",
-  ownerName: "",
-  ownerEmail: "",
-  ownerPhoneNumber: "",
-  status: "",
-}); 
+  totalPrice: 0,
+  factoryOrderId: "",
+});
 
-const editingOrder = ref(null); // Track order being edited
+const editingPackage = ref(null); // Track package being edited
 const showModal = ref(false); // Track if the modal is visible
 
-const API_BASE_URL = "http://localhost:8080/api/v1/factoryOrder";
+const API_BASE_URL = "http://localhost:8080/api/v1/package";
 
-// Fetch all factory orders on component mount
+// Fetch all packages and factory orders on component mount
 onMounted(async () => {
-  await fetchOrders();
+  await fetchPackages();
+  await fetchOrders();  // Fetch orders when the component is mounted
 });
+
+// Fetch all packages from API
+async function fetchPackages() {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/allPackages`);
+    packages.value = response.data;
+  } catch (error) {
+    console.error("Error fetching packages:", error);
+  }
+}
 
 // Fetch all factory orders from API
 async function fetchOrders() {
   try {
-    const response = await axios.get(`${API_BASE_URL}/allOrders`);
-    factoryOrders.value = response.data;
+    const response = await axios.get("http://localhost:8080/api/v1/factoryOrder/allOrders");
+    orders.value = response.data;
   } catch (error) {
-    console.error("Error fetching factory orders:", error);
+    console.error("Error fetching orders:", error);
   }
 }
 
-// Add a new factory order
-async function addOrder() {
+// Add a new package
+async function addPackage() {
   if (
-    newOrder.value.description &&
-    newOrder.value.dest &&
-    newOrder.value.ownerName &&
-    newOrder.value.ownerEmail &&
-    newOrder.value.ownerPhoneNumber &&
-    newOrder.value.status
+    newPackage.value.name &&
+    newPackage.value.totalPrice > 0 &&
+    newPackage.value.factoryOrderId
   ) {
     try {
-      const response = await axios.post(`${API_BASE_URL}/addOrder`, newOrder.value);
-      factoryOrders.value.push(response.data);
+      const response = await axios.post(`${API_BASE_URL}/addPackage?orderId=${newPackage.value.factoryOrderId}`, newPackage.value);
+      packages.value.push(response.data);
       resetForm();
     } catch (error) {
-      console.error("Error adding order:", error);
+      console.error("Error adding package:", error);
     }
   }
 }
 
-// Update an existing factory order
-async function updateOrder() {
+// Update an existing package
+async function updatePackage() {
   try {
-    const response = await axios.put(`${API_BASE_URL}/updateOrderById/${editingOrder.value.id}`, newOrder.value);
-    const index = factoryOrders.value.findIndex((order) => order.id === editingOrder.value.id);
-    factoryOrders.value[index] = response.data;
+    const response = await axios.put(`${API_BASE_URL}/updatePackageById/${editingPackage.value.id}`, newPackage.value);
+    const index = packages.value.findIndex((packageData) => packageData.id === editingPackage.value.id);
+    packages.value[index] = response.data;
     resetForm();
   } catch (error) {
-    console.error("Error updating order:", error);
+    console.error("Error updating package:", error);
   }
 }
 
-// Delete a factory order by ID
-async function deleteOrder(id) {
+// Delete a package by ID
+async function deletePackage(id) {
   try {
-    await axios.delete(`${API_BASE_URL}/deleteOrderById/${id}`);
-    factoryOrders.value = factoryOrders.value.filter((order) => order.id !== id);
+    await axios.delete(`${API_BASE_URL}/deletePackageById/${id}`);
+    packages.value = packages.value.filter((packageData) => packageData.id !== id);
   } catch (error) {
-    console.error("Error deleting order:", error);
+    console.error("Error deleting package:", error);
   }
 }
 
-// Edit a factory order (populate the form)
-function editOrder(order) {
-  editingOrder.value = { ...order }; // Clone the order for editing
-  newOrder.value = { ...order }; // Populate the form with the selected order data
+// Edit a package (populate the form)
+function editPackage(packageData) {
+  editingPackage.value = { ...packageData }; // Clone the package for editing
+  newPackage.value = { ...packageData }; // Populate the form with the selected package data
   showModal.value = true; // Open the modal for editing
 }
 
@@ -207,21 +190,19 @@ function closeModal() {
 
 // Reset the form
 function resetForm() {
-  newOrder.value = {
+  newPackage.value = {
+    name: "",
     description: "",
-    dest: "",
-    ownerName: "",
-    ownerEmail: "",
-    ownerPhoneNumber: "",
-    status: "",
+    totalPrice: 0,
+    factoryOrderId: "",
   };
-  editingOrder.value = null;
+  editingPackage.value = null;
   closeModal();
 }
 
-// Print the Factory Order table
+// Print the Package table
 function printTable() {
-  const printContents = document.getElementById('factoryOrderTable').outerHTML;
+  const printContents = document.getElementById('packageTable').outerHTML;
   const originalContents = document.body.innerHTML;
   document.body.innerHTML = printContents;
   window.print();
@@ -231,16 +212,16 @@ function printTable() {
 </script>
 
 <style scoped>
-/* Overall container for the Factory Order section */
-.factory-order-container {
+/* Package container styling */
+.package-container {
   padding: 30px;
   background-color: #f8f9fa;
   min-height: 100vh;
   font-family: "Roboto", sans-serif;
 }
 
-/* Enhanced Title */
-.factory-order-container h1 {
+/* Title Styling */
+.package-container h1 {
   text-align: center;
   color: #34495e;
   font-size: 2.8em;
@@ -248,7 +229,7 @@ function printTable() {
   margin-bottom: 40px;
 }
 
-/* Add Order and Print Report Buttons */
+/* Add Package and Print Report Buttons */
 .header {
   display: flex;
   justify-content: space-between;
@@ -305,8 +286,6 @@ function printTable() {
   border-radius: 16px;
   width: 550px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  position: relative;
-  z-index: 100;
 }
 
 .modal h3 {
@@ -317,24 +296,24 @@ function printTable() {
 }
 
 /* Table Styling */
-.factory-order-table {
+.package-table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 20px;
 }
 
-.factory-order-table th, .factory-order-table td {
+.package-table th, .package-table td {
   padding: 12px;
   text-align: left;
   border-bottom: 1px solid #ddd;
 }
 
-.factory-order-table th {
+.package-table th {
   background-color: #34495e;
   color: white;
 }
 
-.factory-order-table tr:hover {
+.package-table tr:hover {
   background-color: #f1f1f1;
 }
 
@@ -420,8 +399,8 @@ button {
   background-color: #c0392b;
 }
 
-/* No factory orders message */
-.no-factory-orders {
+/* No packages message */
+.no-packages {
   margin-top: 50px;
   text-align: center;
   font-size: 1.5em;
@@ -430,7 +409,7 @@ button {
 
 /* Print media query to hide unnecessary elements */
 @media print {
-  .factory-order-container {
+  .package-container {
     padding: 0;
     background-color: white;
   }
@@ -439,41 +418,41 @@ button {
     display: none;
   }
 
-  .factory-order-table {
+  .package-table {
     width: 100%;
     border-collapse: collapse;
     margin-top: 15pt;
     font-size: 10pt;
   }
 
-  .factory-order-table th, .factory-order-table td {
+  .package-table th, .package-table td {
     border: 1pt solid #34495e;
     padding: 8pt;
     text-align: left;
   }
 
-  .factory-order-table th {
+  .package-table th {
     background-color: #f2f2f2;
     color: #2c3e50;
     font-weight: bold;
     text-transform: uppercase;
   }
 
-  .factory-order-table tr:nth-child(even) {
+  .package-table tr:nth-child(even) {
     background-color: #f9f9f9;
   }
 
-  .factory-order-table tr:hover {
+  .package-table tr:hover {
     background-color: transparent;
   }
 
   /* Add a subtle box shadow to the table */
-  .factory-order-table {
+  .package-table {
     box-shadow: 0 0 10pt rgba(0, 0, 0, 0.1);
   }
 
   /* Add a bottom border to the table header */
-  .factory-order-table thead {
+  .package-table thead {
     border-bottom: 2pt solid #34495e;
   }
 
@@ -488,11 +467,11 @@ button {
   }
 
   /* Add some spacing between rows for better readability */
-  .factory-order-table tr {
+  .package-table tr {
     page-break-inside: avoid;
   }
 
-  .factory-order-table td {
+  .package-table td {
     padding-top: 6pt;
     padding-bottom: 6pt;
   }
