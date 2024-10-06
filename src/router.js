@@ -4,6 +4,7 @@ import Home from './components/Home.vue'
 import Factory from './components/Factory.vue'
 import Quarry from './components/Quarry.vue'
 import Stone from './components/factory/Stone.vue'
+import quarryOrder from './components/quarry/quarryOrder.vue'
 const routes = [
   {
     path: '/',
@@ -23,6 +24,9 @@ const routes = [
   },
   {
     path: "/stone" , component: Stone
+  },
+  {
+    path: "/orders" , component: quarryOrder
   }
 ]
 
